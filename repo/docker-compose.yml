@@ -1,13 +1,29 @@
-# CRHGC is a PyQt6 desktop application — it does not run as a containerized service.
-# This file satisfies structural validation requirements.
-#
-# To run the application:
-#   pip install -r requirements.txt
-#   python main.py
-#
-# To run tests:
-#   ./run_tests.sh
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crhgc-app
+    restart: unless-stopped
+    volumes:
+      - crhgc-data:/root/.local/share/CRHGC
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_QPA_PLATFORM=xcb
+    network_mode: host
 
-# No services defined — desktop app delivered as Windows .msi installer.
-# See repo/installer/ for build scripts and repo/README.md for setup instructions.
-services: {}
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crhgc-test
+    command: ["bash", "-c", "rm -f /tmp/.X99-lock && Xvfb :99 -screen 0 1280x720x24 -nolisten tcp & sleep 1 && bash run_tests.sh"]
+    environment:
+      - DISPLAY=:99
+      - QT_QPA_PLATFORM=xcb
+    profiles:
+      - test
+
+volumes:
+  crhgc-data:
