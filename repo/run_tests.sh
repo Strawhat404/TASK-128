@@ -9,6 +9,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# If not inside a container, delegate to Docker where all deps are available
+if [ ! -f /.dockerenv ]; then
+    echo "Delegating to Docker test container..."
+    docker compose --profile test run --rm \
+        -e DISPLAY=:99 \
+        -e QT_QPA_PLATFORM=offscreen \
+        test
+    exit $?
+fi
+
 PYTHON="${PYTHON:-python3}"
 PASS=0
 FAIL=0

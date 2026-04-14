@@ -18,10 +18,10 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: crhgc-test
-    command: ["bash", "-c", "rm -f /tmp/.X99-lock && Xvfb :99 -screen 0 1280x720x24 -nolisten tcp & sleep 1 && bash run_tests.sh"]
+    command: ["bash", "-c", "rm -f /tmp/.X99-lock && Xvfb :99 -screen 0 1280x720x24 -nolisten tcp & sleep 1 && DISPLAY=:99 QT_QPA_PLATFORM=offscreen bash run_tests.sh"]
     environment:
       - DISPLAY=:99
-      - QT_QPA_PLATFORM=xcb
+      - QT_QPA_PLATFORM=offscreen
     profiles:
       - test
 
