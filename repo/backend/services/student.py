@@ -129,6 +129,11 @@ class StudentService:
     def update(self, session: Session, student_id: int, dto: StudentDTO) -> Student:
         self._validate(dto)
         with db.transaction() as conn:
+            # Read old FTS column values before mutating — contentless FTS5
+            # requires the previous values to remove the old entry.
+            old = conn.execute(
+                "SELECT student_id_ext, full_name, college FROM students WHERE id=?",
+                (student_id,)).fetchone()
             conn.execute(
                 """UPDATE students SET student_id_ext=?, full_name=?, college=?,
                        class_year=?, email_enc=?, phone_enc=?, ssn_last4_enc=?,
@@ -139,7 +144,14 @@ class StudentService:
                  crypto.encrypt_field(dto.phone),
                  crypto.encrypt_field(dto.ssn_last4),
                  dto.housing_status, student_id))
-            conn.execute("DELETE FROM students_fts WHERE rowid=?", (student_id,))
+            # Contentless FTS5 (content='') does not support plain DELETE;
+            # use the special 'delete' command with old column values.
+            if old:
+                conn.execute(
+                    "INSERT INTO students_fts(students_fts, rowid, student_id_ext, "
+                    "full_name, college) VALUES('delete', ?, ?, ?, ?)",
+                    (student_id, old["student_id_ext"], old["full_name"],
+                     old["college"] or ""))
             conn.execute(
                 "INSERT INTO students_fts(rowid, student_id_ext, full_name, college) "
                 "VALUES (?, ?, ?, ?)",
