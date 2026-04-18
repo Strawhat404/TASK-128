@@ -96,7 +96,20 @@ def test_main_window_smoke(container, admin_session):
     qtbot = _qtbot_fixture()
     from frontend.main_window import MainWindow
 
+    # Discard any drafts to prevent _offer_draft_recovery from opening
+    # a blocking QMessageBox.question dialog in headless mode.
+    try:
+        container.checkpoints.discard_all(admin_session)
+    except Exception:
+        pass
+
     win = MainWindow(container, admin_session)
+    # Stop timers immediately so they don't fire during the test.
+    try:
+        win._dispatch_timer.stop()
+        win._checkpoint_timer.stop()
+    except Exception:
+        pass
     qtbot.addWidget(win)
     qtbot.waitExposed(win, timeout=2000)
 
@@ -111,6 +124,7 @@ def test_main_window_smoke(container, admin_session):
                    modifier=_Qt.KeyboardModifier.ControlModifier)
 
     # Tear down explicitly so the test doesn't leak Qt timers between runs.
+    win._force_quit = True
     win.close()
 
 

@@ -31,16 +31,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-ENV QT_QPA_PLATFORM=xcb
-
-# Entrypoint: use host display if available (X11 forwarding), otherwise fall back to Xvfb
-CMD ["sh", "-c", "\
-  if [ -n \"$DISPLAY\" ] && xdpyinfo -display \"$DISPLAY\" >/dev/null 2>&1; then \
-    echo 'Using host display' && python main.py; \
-  else \
-    echo 'No host display — starting Xvfb' && \
-    rm -f /tmp/.X99-lock && \
-    Xvfb :99 -screen 0 1280x720x24 -nolisten tcp & \
-    sleep 1 && \
-    DISPLAY=:99 python main.py; \
-  fi"]
+# Entrypoint: keep container alive; tests are run via run_tests.sh
+CMD ["tail", "-f", "/dev/null"]

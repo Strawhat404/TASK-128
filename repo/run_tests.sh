@@ -3,13 +3,11 @@
 # CRHGC — Unified Test Runner
 # Usage: ./run_tests.sh
 #
-# When called from outside a container, delegates to the
-# dedicated 'test' service (docker compose --profile test run)
-# which has all deps pre-installed and no network_mode/name
-# conflicts with the main app container.
-#
 # When called from inside the container (/app/main.py exists),
 # runs the test suite directly using the container's Python.
+#
+# When called from outside, starts the stack if needed and
+# delegates test execution into the running app container.
 # ============================================================
 
 set -euo pipefail
@@ -19,7 +17,6 @@ cd "$SCRIPT_DIR"
 
 # -----------------------------------------------------------
 # INSIDE the container — run the suite directly.
-# Detected by /app/main.py which only exists in the built image.
 # -----------------------------------------------------------
 if [ -f /app/main.py ]; then
     PYTHON="python3"
@@ -30,6 +27,13 @@ if [ -f /app/main.py ]; then
     echo "  CRHGC Test Suite  (container runtime)"
     echo "=========================================="
     echo ""
+
+    # Set up headless display
+    rm -f /tmp/.X99-lock
+    Xvfb :99 -screen 0 1280x720x24 -nolisten tcp &
+    sleep 1
+    export DISPLAY=:99
+    export QT_QPA_PLATFORM=offscreen
 
     # ---- Headless verification (service flows) ----
     echo "=== Headless Verification (verify.py) ==="
@@ -71,11 +75,41 @@ if [ -f /app/main.py ]; then
 fi
 
 # -----------------------------------------------------------
-# OUTSIDE the container — delegate to the 'test' profile
-# service which is purpose-built for headless test execution
-# and has no container_name or network_mode conflicts.
+# OUTSIDE the container — ensure stack is up, then exec in.
 # -----------------------------------------------------------
-echo "Delegating test execution to Docker test service..."
 
-docker compose --profile test run --rm test
+# Detect docker compose command (V2 plugin vs V1 standalone)
+if docker compose version &>/dev/null 2>&1; then
+    COMPOSE="docker compose"
+elif command -v docker-compose &>/dev/null; then
+    COMPOSE="docker-compose"
+else
+    echo "Error: Neither 'docker compose' nor 'docker-compose' found." >&2
+    exit 1
+fi
+
+echo "Starting Docker Compose stack..."
+$COMPOSE up -d 2>/dev/null || true
+
+# Wait for container to be running (restart if stopped)
+for i in $(seq 1 30); do
+    STATUS=$(docker inspect --format='{{.State.Status}}' crhgc-app 2>/dev/null || echo "missing")
+    if [ "$STATUS" = "running" ]; then
+        break
+    elif [ "$STATUS" = "exited" ] || [ "$STATUS" = "stopped" ]; then
+        echo "Container stopped, restarting..."
+        docker start crhgc-app 2>/dev/null || $COMPOSE up -d 2>/dev/null || true
+    fi
+    sleep 1
+done
+
+# Final check
+STATUS=$(docker inspect --format='{{.State.Status}}' crhgc-app 2>/dev/null || echo "missing")
+if [ "$STATUS" != "running" ]; then
+    echo "Error: crhgc-app container is not running (status: $STATUS)." >&2
+    exit 1
+fi
+
+echo "Delegating test execution into container: crhgc-app"
+docker exec -i crhgc-app bash /app/run_tests.sh
 exit $?
